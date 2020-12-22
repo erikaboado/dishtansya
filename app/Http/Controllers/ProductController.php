@@ -7,18 +7,18 @@ use App\Models\Product;
 
 class ProductController extends Controller
 {
-    public function __construct()
-    {
-        $this->middleware('auth:api');
-    }
 
-    public function store(Request $request)
+    public function makeOrder(Request $request)
     {
+        if(!auth()->check()) {
+            return response()->json(['message' => 'Unauthorized user'], 401);
+        }
+
         $product_id = $request->product_id;
         $quantity = $request->quantity;
 
         if($this->checkAvailableStocks($product_id, $quantity)) {
-            return $this->makeOrder($product_id, $quantity);
+            return $this->processOrder($product_id, $quantity);
         }
 
         return response()->json(['message' => 'Failed to order this product due to unavailability of the stock'], 400);
@@ -34,9 +34,9 @@ class ProductController extends Controller
         return false;
     }
 
-    public function makeOrder($product_id, $quantity)
+    public function processOrder($product_id, $quantity)
     {
-        $product = Product::findOrFail($product_id);
+        $product = Product::where('id', $product_id)->lockForUpdate()->first();
         $product->available_stock -= $quantity;
         $product->save();
         return response()->json(['message' => 'You have successfully ordered this product'], 201);

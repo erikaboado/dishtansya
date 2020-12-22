@@ -6,20 +6,17 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use App\Models\User;
 use Validator;
+use Carbon\Carbon;
 
 class AuthController extends Controller
 {
-    public function __construct()
-    {
-        $this->middleware('auth:api', ['except' => ['login', 'register']]);
-    }
-
+    
     public function register(Request $request)
     {
         $validator = Validator::make($request->all(), [
             'email' => 'required|string|email|unique:users',
             'password' => 'required|string|min:6'
-        ], $messages = [
+        ], [
             'email.unique' => 'Email already taken'
         ]);
 
@@ -45,30 +42,71 @@ class AuthController extends Controller
             return response()->json($validator->errors(), 422);
         }
 
-        if ($token = $this->guard()->attempt($validator->validated())) {
-            return $this->respondWithToken($token);
+        $user = User::whereEmail($request->email)->first();
+        if ($user && $this->isLocked($user->id)) {
+            return response()->json(['message' => 'Account is locked'], 403);
         }
 
+        if ($token = $this->guard()->attempt($validator->validated())) {
+            $this->resetFailedLoginAttempts($user->id);
+            return response()->json(['access_token' => $token], 201);
+        }
+
+        if ($user) {
+            $this->updateFailedAttempts($user->id);
+        }
         return response()->json(['message' => 'Invalid credentials'], 401);
+
+    }
+
+    protected function isLocked($id)
+    {
+        $user = User::findOrFail($id);
+        if($user && $user->last_failed_attempt != null) {
+            $now = Carbon::now()->toDateTimeString();
+            if($now >= $user->last_failed_attempt) {
+                $user->last_failed_attempt = null;
+                $user->login_attempts = 0;
+                $user->save();
+                return false;
+            }
+            return true;
+        }
+        return false;
+    }
+
+    protected function updateFailedAttempts($id)
+    {
+        $user = User::findOrFail($id);
+        
+        if($user && $user->login_attempts < 5) {
+            $user->login_attempts += 1;
+            $user->save();
+        }
+
+        if($user && $user->login_attempts >= 5) {
+            $this->lockAccount($user->id);
+        }
+
+    }
+
+    protected function lockAccount($id)
+    {
+        $unlock_time = Carbon::now()->addMinutes(5)->format('Y-m-d H:i:s');
+        $user = User::findOrFail($id);
+        $user->last_failed_attempt = $unlock_time;
+        $user->save();
+    }
+
+    protected function resetFailedLoginAttempts($id)
+    {
+        $user = User::findOrFail($id);
+        $user->last_failed_attempt = null;
+        $user->login_attempts = 0;
+        $user->save();
     }
 
      /**
-     * Get the token array structure.
-     *
-     * @param  string $token
-     *
-     * @return \Illuminate\Http\JsonResponse
-     */
-    protected function respondWithToken($token)
-    {
-        return response()->json([
-            'access_token' => $token,
-            // 'token_type' => 'bearer',
-            // 'expires_in' => $this->guard()->factory()->getTTL() * 60
-        ]);
-    }
-
-    /**
      * Get the guard to be used during authentication.
      *
      * @return \Illuminate\Contracts\Auth\Guard
