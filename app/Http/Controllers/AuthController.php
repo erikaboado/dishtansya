@@ -18,7 +18,7 @@ class AuthController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'email' => 'required|string|email|unique:users',
-            'password' => 'required|string|confirmed|min:6'
+            'password' => 'required|string|min:6'
         ], $messages = [
             'email.unique' => 'Email already taken'
         ]);
@@ -45,22 +45,36 @@ class AuthController extends Controller
             return response()->json($validator->errors(), 422);
         }
 
-        if (! $token = auth()->attempt($validator->validated())) {
-            return response()->json(['message' => 'Invalid credentials'], 401);
+        if ($token = $this->guard()->attempt($validator->validated())) {
+            return $this->respondWithToken($token);
         }
 
-
-        return response()->json($this->createNewToken($token), 201);
-        // return response()->json(['access_token' => $token], 201);
-
+        return response()->json(['message' => 'Invalid credentials'], 401);
     }
 
-    protected function createNewToken($token){
+     /**
+     * Get the token array structure.
+     *
+     * @param  string $token
+     *
+     * @return \Illuminate\Http\JsonResponse
+     */
+    protected function respondWithToken($token)
+    {
         return response()->json([
             'access_token' => $token,
             // 'token_type' => 'bearer',
-            // 'expires_in' => auth('api')->factory()->getTTL() * 60,
-            // 'user' => auth()->user()
+            // 'expires_in' => $this->guard()->factory()->getTTL() * 60
         ]);
+    }
+
+    /**
+     * Get the guard to be used during authentication.
+     *
+     * @return \Illuminate\Contracts\Auth\Guard
+     */
+    public function guard()
+    {
+        return Auth::guard();
     }
 }
