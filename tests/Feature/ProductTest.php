@@ -34,6 +34,7 @@ class ProductTest extends TestCase
         ]);
         
         $this->actingAs($user, 'api')->post('api/order', ['product_id' => $product->id, 'quantity' => 1])->assertStatus(201);
+        $this->assertDatabaseHas('products', ['id' => $product->id, 'available_stock' => 2]);
     }
 
     /** @test */
@@ -47,5 +48,6 @@ class ProductTest extends TestCase
         ]);
         
         $this->actingAs($user, 'api')->post('api/order', ['product_id' => $product->id, 'quantity' => 999])->assertStatus(400);
+        $this->assertDatabaseHas('products', ['id' => $product->id, 'available_stock' => 3]);
     }
 }

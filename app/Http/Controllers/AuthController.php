@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use Illuminate\Contracts\Auth\Guard;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use App\Models\User;
@@ -10,7 +12,12 @@ use Carbon\Carbon;
 
 class AuthController extends Controller
 {
-    
+    /**
+     * User Registration
+     *
+     * @param Request $request
+     * @return JsonResponse
+     */
     public function register(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -31,6 +38,12 @@ class AuthController extends Controller
         ], 201);
     }
 
+    /**
+     * User Authentication
+     *
+     * @param Request $request
+     * @return JsonResponse
+     */
     public function login(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -53,32 +66,45 @@ class AuthController extends Controller
         }
 
         if ($user) {
-            $this->updateFailedAttempts($user->id);
+            $this->updateLoginAttempts($user->id);
         }
         return response()->json(['message' => 'Invalid credentials'], 401);
 
     }
 
+    /**
+     * Check if account is locked
+     *
+     * @param $id
+     * @return bool
+     */
     protected function isLocked($id)
     {
         $user = User::findOrFail($id);
-        if($user && $user->last_failed_attempt != null) {
-            $now = Carbon::now()->toDateTimeString();
-            if($now >= $user->last_failed_attempt) {
+
+        if ($user && $user->last_failed_attempt != null) {
+            if (Carbon::now()->toDateTimeString() >= $user->last_failed_attempt) {
                 $user->last_failed_attempt = null;
                 $user->login_attempts = 0;
                 $user->save();
                 return false;
             }
+
             return true;
         }
+
         return false;
     }
 
-    protected function updateFailedAttempts($id)
+    /**
+     * Method that updates login attempts
+     *
+     * @param $id
+     */
+    protected function updateLoginAttempts($id)
     {
         $user = User::findOrFail($id);
-        
+
         if($user && $user->login_attempts < 5) {
             $user->login_attempts += 1;
             $user->save();
@@ -90,6 +116,11 @@ class AuthController extends Controller
 
     }
 
+    /**
+     * Method that locks user account
+     *
+     * @param $id
+     */
     protected function lockAccount($id)
     {
         $unlock_time = Carbon::now()->addMinutes(5)->format('Y-m-d H:i:s');
@@ -98,6 +129,11 @@ class AuthController extends Controller
         $user->save();
     }
 
+    /**
+     * Method that reset failed login attempts
+     *
+     * @param $id
+     */
     protected function resetFailedLoginAttempts($id)
     {
         $user = User::findOrFail($id);
@@ -106,11 +142,11 @@ class AuthController extends Controller
         $user->save();
     }
 
-     /**
-     * Get the guard to be used during authentication.
-     *
-     * @return \Illuminate\Contracts\Auth\Guard
-     */
+    /**
+    * Get the guard to be used during authentication.
+    *
+    * @return Guard
+    */
     public function guard()
     {
         return Auth::guard();
